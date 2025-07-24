@@ -27,7 +27,7 @@ jobs:
           scan-type: 'fs'
           scan-ref: '.'
           format: 'template'
-          template: "@/contrib/html.tpl"
+          template: "./contrib/html.tpl"
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
