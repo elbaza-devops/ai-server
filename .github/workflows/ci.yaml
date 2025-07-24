@@ -16,6 +16,11 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
     
+      - name: Download Trivy HTML Template
+        run: |
+          mkdir -p contrib
+          curl -sSL -o contrib/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+
       - name: Run Trivy FS Scan
         uses: aquasecurity/trivy-action@0.30.0
         with:
