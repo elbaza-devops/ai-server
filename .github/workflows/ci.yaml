@@ -26,21 +26,19 @@ jobs:
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          format: 'template'
-          template: "./contrib/html.tpl"
-          # exit-code: '1'
+          format: 'json'
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
           scanners: "vuln,secret,misconfig,license"
-          output: trivy-report-${{ github.run_id }}.html
+          output: trivy-report-${{ github.run_id }}.json
           trivy-config: ${{ github.workspace }}/${{ github.repository }}/trivy-config.yaml
 
       - name: Upload Trivy FS Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ github.run_id }}
-          path: trivy-report-${{ github.run_id }}.html
+          path: trivy-report-${{ github.run_id }}.json
 
 
   Build:
