@@ -2,7 +2,9 @@ name: CI
 run-name: CI workflow triggered by ${{ github.actor }}
 on:
   push:
-    branches: [ "main" ]
+    branches: 
+      - main
+      - test/trivy
 
   workflow_dispatch:
 
@@ -19,26 +21,27 @@ jobs:
       - name: Download Trivy HTML Template
         run: |
           mkdir -p contrib
-          curl -sSL -o contrib/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+          sudo curl -sSL -o /usr/bin/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
 
       - name: Run Trivy FS Scan
         uses: aquasecurity/trivy-action@0.30.0
         with:
           scan-type: 'fs'
           scan-ref: '.'
-          format: 'json'
+          format: 'template'
+          template: "@/usr/bin/html.tpl"
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
           scanners: "vuln,secret,misconfig,license"
-          output: trivy-report-${{ github.run_id }}.json
+          output: trivy-report-${{ github.run_id }}.html
           trivy-config: ${{ github.workspace }}/${{ github.repository }}/trivy-config.yaml
 
       - name: Upload Trivy FS Report Artifact
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ github.run_id }}
-          path: trivy-report-${{ github.run_id }}.json
+          path: trivy-report-${{ github.run_id }}.html
 
 
   Build:
