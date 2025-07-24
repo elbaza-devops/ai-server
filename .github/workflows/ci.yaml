@@ -10,6 +10,34 @@ permissions:
       id-token: write   # This is required for requesting the JWT
       contents: read    # This is required for actions/checkout
 jobs:
+  Prebuild:
+    runs-on: arc-runner-set
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+    
+      - name: Run Trivy FS Scan
+        uses: aquasecurity/trivy-action@0.30.0
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'template'
+          template: "@/contrib/html.tpl"
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
+          scanners: "vuln,secret,misconfig,license"
+          output: trivy-report-${{ github.run_id }}.html
+          trivy-config: ${{ github.workspace }}/${{ github.repository }}/trivy-config.yaml
+
+      - name: Upload Trivy FS Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-report-${{ github.run_id }}
+          path: trivy-report-${{ github.run_id }}.html
+
+
   Build:
     runs-on: arc-runner-set
     steps:
