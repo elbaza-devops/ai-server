@@ -40,6 +40,7 @@ jobs:
 
   Build:
     runs-on: arc-runner-set
+    needs: Prebuild
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -72,9 +73,23 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
+<<<<<<< HEAD
+          push: false
+          tags: ${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.sha }}
+=======
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}
+>>>>>>> b63c4f407620055afa86b32a00d59587a3973fc4
 
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: 'docker.io/my-organization/my-app:${{ github.sha }}'
+          format: 'table'
+          exit-code: '1'
+          ignore-unfixed: true
+          vuln-type: 'os,library'
+          severity: 'CRITICAL,HIGH'
   Postbuild:
     runs-on: arc-runner-set
     needs: Build
