@@ -64,7 +64,7 @@ jobs:
           tags: $REGISTRY/$REPOSITORY:$IMAGE_TAG
         env:
           REGISTRY: ${{ steps.login-ecr.outputs.registry }}
-          REPOSITORY: my-ecr-repo
+          REPOSITORY: healthcare/dev/ai-server
           IMAGE_TAG: ${{ github.sha }}
 
   Postbuild:
