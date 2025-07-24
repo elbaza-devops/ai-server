@@ -1,0 +1,48 @@
+name: CI
+run-name: CI workflow triggered by ${{ github.actor }}
+on:
+  push:
+    branches: [ "main" ]
+
+  workflow_dispatch:
+jobs:
+  Prebuild:
+    runs-on: arc-runner-set 
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run a one-line script
+        run: echo Hello, world!
+
+  Build:
+    runs-on: arc-runner-set
+    needs: Prebuild
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Install AWS CLI v2
+        run: |
+          curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+          unzip awscliv2.zip
+          sudo ./aws/install
+          aws --version
+
+      - name: Configure AWS credentials using OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          aws-region: us-east-1
+
+      - name: List S3 buckets
+        run: |
+          aws s3 ls
+
+  Postbuild:
+    runs-on: arc-runner-set
+    needs: Build
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run a one-line script
+        run: echo Hello, world!
