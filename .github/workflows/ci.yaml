@@ -42,10 +42,16 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-
-      - name: List S3 buckets
-        run: |
-          aws s3 ls
+      - name: Create ECR Repositories
+        uses: elbaza-devops/github-actions/aws/create-ecr-repo-action@main
+        with:
+            role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+            role-session-name: GitHub_to_AWS_via_FederatedOIDC_Run_ID_${{ github.run_id }}
+            aws-region: us-east-1
+            repo_names: '["ai-server"]'
+            ecr_namespaces: '["dev"]'
+            project_name: "healthcare"
+            tags: '[{"Key": "Environment", "Value": "dev"}]'
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
