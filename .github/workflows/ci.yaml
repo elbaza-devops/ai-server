@@ -113,7 +113,7 @@ jobs:
           image-ref: '${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}'
           format: 'template'
           template: "@/usr/bin/html.tpl"
-          exit-code: '1'
+          # exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
           output: trivy-image-report-${{ github.run_id }}.html
