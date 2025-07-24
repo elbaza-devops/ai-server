@@ -73,13 +73,8 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-<<<<<<< HEAD
-          push: false
-          tags: ${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.sha }}
-=======
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}
->>>>>>> b63c4f407620055afa86b32a00d59587a3973fc4
 
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.28.0
