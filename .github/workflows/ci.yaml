@@ -82,16 +82,29 @@ jobs:
           push: true
           tags: ${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}
 
+      - name: Download Trivy HTML Template
+        run: |
+          mkdir -p contrib
+          sudo curl -sSL -o /usr/bin/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+
       - name: Run Trivy vulnerability scanner
-        uses: aquasecurity/trivy-action@0.28.0
+        uses: aquasecurity/trivy-action@0.30.0
         with:
-          image-ref: 'docker.io/my-organization/my-app:${{ github.sha }}'
-          format: 'table'
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}'
+          format: 'template'
+          template: "@/usr/bin/html.tpl"
           exit-code: '1'
           ignore-unfixed: true
           vuln-type: 'os,library'
+          output: trivy-image-report-${{ github.run_id }}.html
           severity: 'CRITICAL,HIGH'
-          
+
+      - name: Upload Trivy FS Report Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-image-report-${{ github.run_id }}
+          path: trivy-image-report-${{ github.run_id }}.html
+
   Postbuild:
     runs-on: arc-runner-set
     needs: Build
