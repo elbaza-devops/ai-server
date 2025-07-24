@@ -90,6 +90,7 @@ jobs:
           ignore-unfixed: true
           vuln-type: 'os,library'
           severity: 'CRITICAL,HIGH'
+          
   Postbuild:
     runs-on: arc-runner-set
     needs: Build
