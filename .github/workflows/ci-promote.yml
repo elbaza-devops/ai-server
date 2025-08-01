@@ -21,13 +21,11 @@ on:
         type: string
 
 jobs:
-  promote:
-    environment: ${{ inputs.environment }}
-    uses: elbaza-devops/github-actions/resuable-workflows/ci-promote-reusable.yaml
+  Promote:
+    uses: elbaza-devops/github-actions/.github/workflows/ci-promote-reusable.yaml@main
     with:
       service-name: ${{ inputs.service-name }}
       environment:  ${{ inputs.environment }}
       tag: ${{ inputs.tag }}
     secrets:
       AWS_OIDC_ROLE: ${{ secrets.AWS_OIDC_ROLE }}
-    

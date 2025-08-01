@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    uses: elbaza-devops/github-actions/resuable-workflows/ci-build-reusable.yaml
+    uses: elbaza-devops/github-actions/.github/workflows/ci-build-reusable.yaml@main
     with:
       service-name: ai-server
     secrets:
