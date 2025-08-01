@@ -24,7 +24,7 @@ on:
 
 
 jobs:
-  Promote:
+  CI:
     uses: elbaza-devops/github-actions/.github/workflows/ci-promote-reusable.yaml@main
     with:
       service-name: ai-server
