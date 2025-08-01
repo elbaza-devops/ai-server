@@ -1,9 +1,7 @@
-name: CI Pipeline
+# .github/workflows/ci-promote.yml
+name: Promote Image
 
 on:
-  push:
-    branches:
-      - 'feature/**'
   workflow_dispatch:
     inputs:
       service-name:
@@ -23,13 +21,13 @@ on:
         type: string
 
 jobs:
-  ci:
-    uses: ./.github/workflows/ci-reusable.yml
+  promote:
+    environment: ${{ inputs.environment }}
+    uses: ./.github/workflows/ci-promote-reusable.yml
     with:
-      trigger: ${{ github.event_name }}
       service-name: ${{ inputs.service-name }}
-      environment: ${{ inputs.environment }}
+      environment:  ${{ inputs.environment }}
       tag: ${{ inputs.tag }}
-
     secrets:
       AWS_OIDC_ROLE: ${{ secrets.AWS_OIDC_ROLE }}
+    
