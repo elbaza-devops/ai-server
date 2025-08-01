@@ -1,6 +1,13 @@
 # .github/workflows/ci-promote.yml
 name: Promote Image
 
+
+
+# Grant the reusable workflow the permissions it requests
+permissions:
+  id-token: write
+  contents: write
+
 on:
   workflow_dispatch:
     inputs:
@@ -19,6 +26,7 @@ on:
         description: 'Old tag to promote (e.g. dev-abc1234 or staging-abc1234)'
         required: true
         type: string
+
 
 jobs:
   Promote:
