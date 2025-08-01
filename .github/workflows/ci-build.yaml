@@ -12,7 +12,7 @@ on:
       - 'feature/**'
 
 jobs:
-  build:
+  CI:
     uses: elbaza-devops/github-actions/.github/workflows/ci-build-reusable.yaml@main
     with:
       service-name: ai-server
