@@ -22,7 +22,6 @@ on:
 
 jobs:
   Promote:
-    environment: ${{ inputs.environment }}
     uses: elbaza-devops/github-actions/.github/workflows/ci-promote-reusable.yaml@main
     with:
       service-name: ${{ inputs.service-name }}
@@ -30,4 +29,3 @@ jobs:
       tag: ${{ inputs.tag }}
     secrets:
       AWS_OIDC_ROLE: ${{ secrets.AWS_OIDC_ROLE }}
-    
