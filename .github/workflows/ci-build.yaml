@@ -1,5 +1,11 @@
 # .github/workflows/ci-build.yml
-name: Dev Build & Push
+name: CI workflow
+run-name: CI workflow triggerd by ${{ github.actor }}
+
+# Grant the reusable workflow the permissions it requests
+permissions:
+  id-token: write
+  contents: write
 
 on:
   push:
@@ -7,7 +13,7 @@ on:
       - 'feature/**'
 
 jobs:
-  build:
+  CI:
     uses: elbaza-devops/github-actions/.github/workflows/ci-build-reusable.yaml@main
     with:
       service-name: ai-server
