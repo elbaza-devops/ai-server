@@ -23,7 +23,7 @@ on:
 jobs:
   Promote:
     environment: ${{ inputs.environment }}
-    uses: elbaza-devops/github-actions/resuable-workflows/ci-promote-reusable.yaml@main
+    uses: elbaza-devops/github-actions/.github/workflows/ci-promote-reusable.yaml@main
     with:
       service-name: ${{ inputs.service-name }}
       environment:  ${{ inputs.environment }}
