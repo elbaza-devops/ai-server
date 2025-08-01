@@ -1,16 +1,36 @@
 name: CI
 run-name: CI workflow triggered by ${{ github.actor }}
+
+# Build on any feature branch; manual triggers for staging/prod
 on:
   push:
-    branches: 
-      - main
-      - test/trivy
-
+    branches:
+      - 'feature/**'
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'promote to (staging|prod)'
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+      service-name:
+        description: 'Name of the microservice (e.g. ai-server)'
+        required: true
+        type: string
+      tag:
+        description: 'Tag to promote (e.g. dev-abc1234 or staging-abc1234)'
+        required: true
+
 
 permissions:
       id-token: write   # This is required for requesting the JWT
       contents: write    # This is required for actions/checkout
+
+env:
+  AWS_REGION: us-east-1
+
 jobs:
   Prebuild:
     runs-on: arc-runner-set
@@ -43,26 +63,6 @@ jobs:
           name: trivy-report-${{ github.run_id }}
           path: trivy-report-${{ github.run_id }}.html
 
-      # - name: SonarQube Analyse
-      #   uses: SonarSource/sonarqube-scan-action@v5.2.0
-      #   with:
-      #     projectBaseDir: ${{ github.workspace }}/${{ github.repository }}
-      #     args: >
-      #       -Dsonar.projectKey=$CLIPROJECT_KEY
-      #   env:
-      #     SONAR_TOKEN: ${{ inputs.sonarqube-token }}
-      #     SONAR_HOST_URL: ${{ inputs.sonarqube-host-url }}
-
-      # - name: SonarQube Quality Gate
-      #   if: ${{ inputs.sonarqube-quality-gate-wait == 'true' }}
-      #   uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
-      #   with:
-      #     pollingTimeoutSec: ${{ inputs.sonarqube-polling-timeout }}
-      #     scanMetadataReportFile: ${{ github.workspace }}/${{ github.repository }}/.scannerwork/report-task.txt
-      #   env:
-      #     SONAR_TOKEN: ${{ inputs.sonarqube-token }}
-      #     SONAR_HOST_URL: ${{ inputs.sonarqube-host-url }}
-
 
   Build:
     runs-on: arc-runner-set
@@ -70,6 +70,38 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Derive image tag & target env
+        id: tag
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+
+          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" =~ refs/heads/feature/ ]]; then
+            # Feature-branch → dev
+            ENV=dev
+            NEW_TAG="dev-${SHORT_SHA}"
+
+          else
+            # Manual dispatch → staging or prod
+            ENV="${{ github.event.inputs.environment }}"
+
+            if [[ "$ENV" == "staging" ]]; then
+              # inputs.tag is dev-<sha>
+              SRC_TAG="${{ github.event.inputs.tag }}"
+              SHA="${SRC_TAG#dev-}"
+              NEW_TAG="staging-${SHA}"
+
+            elif [[ "$ENV" == "prod" ]]; then
+              # inputs.tag is staging-<sha>
+              SRC_TAG="${{ github.event.inputs.tag }}"
+              # derive semver from Git
+              NEW_TAG=$(git fetch --tags && git describe --tags --abbrev=0)
+            fi
+          fi
+
+          echo "ENV=${ENV}"       >> $GITHUB_OUTPUT
+          echo "IMAGE_TAG=${NEW_TAG}" >> $GITHUB_OUTPUT
+
     
       - name: Configure AWS credentials using OIDC
         uses: elbaza-devops/github-actions/aws/install-cli-action@main
@@ -87,20 +119,54 @@ jobs:
             role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
             role-session-name: GitHub_to_AWS_via_FederatedOIDC_Run_ID_${{ github.run_id }}
             aws-region: us-east-1
-            repo_names: '["ai-server"]'
-            ecr_namespaces: '["dev"]'
-            project_name: "healthcare"
-            tags: '[{"Key": "Environment", "Value": "dev"}]'
+            repo_names: '["${{ inputs.service-name }}"]'
+            ecr_namespaces: '["${{ steps.tag.outputs.ENV }}"]'
+            tags: |
+              [
+                {"Key": "Environment", "Value": "${{ steps.tag.outputs.ENV }}"}
+              ]
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+
       - name: Build and push
+        if: ${{ steps.tag.outputs.ENV == 'dev' }}
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          tags: ${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}
+          tags: ${{ steps.login-ecr.outputs.registry }}/dev/"${{ inputs.service-name }}":${{ steps.tag.outputs.IMAGE_TAG }}
+
+      - name: Promote to staging
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.tag.outputs.ENV == 'dev' && github.event.inputs.environment == 'staging' }}
+        run: |
+          SRC_TAG=${{ steps.tag.outputs.IMAGE_TAG }}
+          SHA=${SRC_TAG#dev-}
+          NEW_TAG=staging-$SHA
+          REG=${{ steps.login-ecr.outputs.registry }}
+          # pull → retag → push
+          docker pull  $REG/dev/"${{ inputs.service-name }}":$SRC_TAG
+          docker tag   $REG/dev/"${{ inputs.service-name }}":$SRC_TAG \
+                        $REG/staging/"${{ inputs.service-name }}":$NEW_TAG
+          docker push  $REG/staging/"${{ inputs.service-name }}":$NEW_TAG
+
+      - name: Promote to prod
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' }}
+        run: |
+          # pull from staging
+          STG_TAG=${{ github.event.inputs.tag }}
+          REG=${{ steps.login-ecr.outputs.registry }}
+          docker pull $REG/staging/${{ inputs.service-name }}:$STG_TAG
+
+          # get latest semver from Git
+          SEMVER=$(git fetch --tags && git describe --tags --abbrev=0)
+
+          # retag & push to prod
+          docker tag $REG/staging/${{ inputs.service-name }}:$STG_TAG \
+                    $REG/prod/${{ inputs.service-name }}:$SEMVER
+          docker push $REG/prod/${{ inputs.service-name }}:$SEMVER
+
 
       - name: Download Trivy HTML Template
         run: |
@@ -110,7 +176,7 @@ jobs:
       - name: Run Trivy vulnerability scanner
         uses: aquasecurity/trivy-action@0.30.0
         with:
-          image-ref: '${{ steps.login-ecr.outputs.registry }}/healthcare/dev/ai-server:${{ github.run_id }}'
+          image-ref: '${{ steps.login-ecr.outputs.registry }}/healthcare/dev/${{ inputs.service-name }}:${{ github.run_id }}'
           format: 'template'
           template: "@/usr/bin/html.tpl"
           # exit-code: '1'
