@@ -21,7 +21,8 @@ on:
         type: string
 
 jobs:
-  promote:
+  Promote:
+    runs-on: arc-runner-set
     environment: ${{ inputs.environment }}
     uses: elbaza-devops/github-actions/resuable-workflows/ci-promote-reusable.yaml
     with:

@@ -8,6 +8,7 @@ on:
 
 jobs:
   build:
+    runs-on: arc-runner-set
     uses: elbaza-devops/github-actions/resuable-workflows/ci-build-reusable.yaml
     with:
       service-name: ai-server
