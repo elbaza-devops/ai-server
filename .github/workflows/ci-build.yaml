@@ -19,3 +19,4 @@ jobs:
       service-name: ai-server
     secrets:
       AWS_OIDC_ROLE: ${{ secrets.AWS_OIDC_ROLE }}
+      GITOPS_PAT: ${{ secrets.GITOPS_PAT }}
