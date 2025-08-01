@@ -22,9 +22,8 @@ on:
 
 jobs:
   Promote:
-    runs-on: arc-runner-set
     environment: ${{ inputs.environment }}
-    uses: elbaza-devops/github-actions/resuable-workflows/ci-promote-reusable.yaml
+    uses: elbaza-devops/github-actions/resuable-workflows/ci-promote-reusable.yaml@main
     with:
       service-name: ${{ inputs.service-name }}
       environment:  ${{ inputs.environment }}
