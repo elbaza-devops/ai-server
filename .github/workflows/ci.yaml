@@ -13,6 +13,7 @@ on:
       environment:
         description: 'Target env for promotion (staging|prod)'
         required: false
+        # default: dev
         type: choice
         options:
           - staging
@@ -97,7 +98,6 @@ jobs:
 
 
       - name: Build and push
-        if: ${{ steps.tag.outputs.ENV == 'dev' }}
         uses: docker/build-push-action@v6
         with:
           context: .
