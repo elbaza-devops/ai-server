@@ -10,10 +10,6 @@ permissions:
 on:
   workflow_dispatch:
     inputs:
-      service-name:
-        description: 'Name of the microservice (e.g. ai-server)'
-        required: true
-        type: string
       environment:
         description: 'promote to (staging|prod)'
         required: true
@@ -31,7 +27,7 @@ jobs:
   Promote:
     uses: elbaza-devops/github-actions/.github/workflows/ci-promote-reusable.yaml@main
     with:
-      service-name: ${{ inputs.service-name }}
+      service-name: ai-server
       environment:  ${{ inputs.environment }}
       tag: ${{ inputs.tag }}
     secrets:
