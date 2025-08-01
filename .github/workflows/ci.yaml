@@ -1,105 +1,93 @@
-name: CI
-run-name: CI workflow triggered by ${{ github.actor }}
-
-# Build on any feature branch; manual triggers for staging/prod
+# .github/workflows/ci-reusable.yml
 on:
-  push:
-    branches:
-      - 'feature/**'
-  workflow_dispatch:
+  workflow_call:
     inputs:
-      environment:
-        description: 'promote to (staging|prod)'
+      trigger:
+        description: 'Caller event name (e.g. push or workflow_dispatch)'
         required: true
-        type: choice
-        options:
-          - staging
-          - prod
+        type: string
       service-name:
         description: 'Name of the microservice (e.g. ai-server)'
         required: true
         type: string
+      environment:
+        description: 'Target env for promotion (staging|prod)'
+        required: false
+        type: choice
+        options:
+          - staging
+          - prod
       tag:
-        description: 'Tag to promote (e.g. dev-abc1234 or staging-abc1234)'
+        description: 'Old tag to promote (e.g. dev-abc1234 or staging-abc1234)'
+        required: false
+        type: string
+    secrets:
+      AWS_OIDC_ROLE:
+        description: 'Role ARN for OIDC'
         required: true
 
-
 permissions:
-      id-token: write   # This is required for requesting the JWT
-      contents: write    # This is required for actions/checkout
+  id-token: write
+  contents: write
 
 env:
   AWS_REGION: us-east-1
 
 jobs:
   Prebuild:
-    if: ${{ github.event_name == 'push' }}
+    if: ${{ inputs.trigger == 'push' }}
     runs-on: arc-runner-set
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-    
+      - uses: actions/checkout@v4
       - name: Download Trivy HTML Template
         run: |
           mkdir -p contrib
-          sudo curl -sSL -o /usr/bin/html.tpl https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
-
+          sudo curl -sSL -o /usr/bin/html.tpl \
+            https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
       - name: Run Trivy FS Scan
         uses: aquasecurity/trivy-action@0.30.0
         with:
-          scan-type: 'fs'
-          scan-ref: '.'
-          format: 'template'
+          scan-type: fs
+          scan-ref: .
+          format: template
           template: "@/usr/bin/html.tpl"
           ignore-unfixed: true
-          vuln-type: 'os,library'
-          severity: 'CRITICAL,HIGH'
-          scanners: "vuln,secret,misconfig,license"
+          vuln-type: os,library
+          severity: CRITICAL,HIGH
+          scanners: vuln,secret,misconfig,license
           output: trivy-report-${{ github.run_id }}.html
           trivy-config: ${{ github.workspace }}/${{ github.repository }}/trivy-config.yaml
-
-      - name: Upload Trivy FS Report Artifact
+      - name: Upload Trivy FS Report
         uses: actions/upload-artifact@v4
         with:
           name: trivy-report-${{ github.run_id }}
           path: trivy-report-${{ github.run_id }}.html
 
-
   Build:
-    if: ${{ github.event_name == 'push' }}
-    runs-on: arc-runner-set
+    if: ${{ inputs.trigger == 'push' }}
     needs: Prebuild
+    runs-on: arc-runner-set
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Derive image tag & target env
+      - uses: actions/checkout@v4
+      - name: Derive image tag & export to env
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          ENV=dev
-          IMAGE_TAG="dev-${SHORT_SHA}"
-
-          echo "ENV=${ENV}"       >> $GITHUB_ENV
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-
-    
-      - name: Configure AWS credentials using (OIDC)
+          echo "ENV=dev" >> $GITHUB_ENV
+          echo "IMAGE_TAG=dev-${SHORT_SHA}" >> $GITHUB_ENV
+      - name: Configure AWS credentials (OIDC)
         uses: elbaza-devops/github-actions/aws/install-cli-action@main
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
-          aws-region: us-east-1
-
+          aws-region: ${{ env.AWS_REGION }}
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Create ECR Repositories
+      - name: Ensure ECR repo & namespace exist
         uses: elbaza-devops/github-actions/aws/create-ecr-repo-action@main
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
-          role-session-name: GitHub_to_AWS_via_FederatedOIDC_Run_ID_${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
-          repo_names: '["${{ github.event.inputs.service-name }}"]'
+          repo_names: '["${{ inputs.service-name }}"]'
           ecr_namespaces: '["${{ env.ENV }}"]'
           tags: |
             [{"Key":"Environment","Value":"${{ env.ENV }}"}]
@@ -117,7 +105,7 @@ jobs:
           tags: >
             ${{ steps.login-ecr.outputs.registry }}
             /${{ env.ENV }}
-            /${{ github.event.inputs.service-name }}
+            /${{ inputs.service-name }}
             :${{ env.IMAGE_TAG }}
 
       - name: Download Trivy HTML Template
@@ -144,28 +132,23 @@ jobs:
           path: trivy-image-report-${{ github.run_id }}.html
 
   Promote:
-    if: ${{ github.event_name == 'workflow_dispatch' }}
+    if: ${{ inputs.trigger == 'workflow_dispatch' }}
     runs-on: arc-runner-set
-    environment: ${{ github.event.inputs.environment }}
+    environment: ${{ inputs.environment }}
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
+      - uses: actions/checkout@v4
       - name: Configure AWS credentials (OIDC)
         uses: elbaza-devops/github-actions/aws/install-cli-action@main
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
           aws-region: ${{ env.AWS_REGION }}
-
       - name: Login to Amazon ECR
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
-
-      - name: Determine Promotion parameters
+      - name: Determine promotion parameters
         run: |
-          ENV="${{ github.event.inputs.environment }}"
-          SERVICE="${{ github.event.inputs.service-name }}"
-          SRC_TAG="${{ github.event.inputs.tag }}"
+          ENV="${{ inputs.environment }}"
+          SRC_TAG="${{ inputs.tag }}"
 
           if [[ "$ENV" == "staging" ]]; then
             SRC_ENV=dev
@@ -178,14 +161,13 @@ jobs:
 
           echo "SRC_ENV=${SRC_ENV}" >> $GITHUB_ENV
           echo "DST_TAG=${DST_TAG}" >> $GITHUB_ENV
-
-      - name: Promote ${{ github.event.inputs.tag }} from ${{ env.SRC_ENV }} to ${{ github.event.inputs.environment }} as ${{ env.DST_TAG }}
+      - name: Promote ${{ inputs.tag }} from ${{ env.SRC_ENV }} to ${{ inputs.environment }} as ${{ env.DST_TAG }}
         run: |
           REG=${{ steps.login-ecr.outputs.registry }}
-          SERVICE="${{ github.event.inputs.service-name }}"
+          SERVICE="${{ inputs.service-name }}"
           SRC_ENV=${{ env.SRC_ENV }}
-          DST_ENV="${{ github.event.inputs.environment }}"
-          SRC_TAG="${{ github.event.inputs.tag }}"
+          DST_ENV="${{ inputs.environment }}"
+          SRC_TAG="${{ inputs.tag }}"
           DST_TAG="${{ env.DST_TAG }}"
 
           docker pull  $REG/$SRC_ENV/$SERVICE:$SRC_TAG
