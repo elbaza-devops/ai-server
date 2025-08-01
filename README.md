@@ -1,1 +1,1 @@
-# ai-server
+# ai-serve
