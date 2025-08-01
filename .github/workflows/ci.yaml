@@ -33,6 +33,7 @@ env:
 
 jobs:
   Prebuild:
+    if: ${{ github.event_name == 'push' }}
     runs-on: arc-runner-set
     steps:
       - name: Checkout repository
@@ -65,6 +66,7 @@ jobs:
 
 
   Build:
+    if: ${{ github.event_name == 'push' }}
     runs-on: arc-runner-set
     needs: Prebuild
     steps:
@@ -72,38 +74,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Derive image tag & target env
-        id: tag
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
+          ENV=dev
+          IMAGE_TAG="dev-${SHORT_SHA}"
 
-          if [[ "${{ github.event_name }}" == "push" && "${{ github.ref }}" =~ refs/heads/feature/ ]]; then
-            # Feature-branch → dev
-            ENV=dev
-            NEW_TAG="dev-${SHORT_SHA}"
-
-          else
-            # Manual dispatch → staging or prod
-            ENV="${{ github.event.inputs.environment }}"
-
-            if [[ "$ENV" == "staging" ]]; then
-              # inputs.tag is dev-<sha>
-              SRC_TAG="${{ github.event.inputs.tag }}"
-              SHA="${SRC_TAG#dev-}"
-              NEW_TAG="staging-${SHA}"
-
-            elif [[ "$ENV" == "prod" ]]; then
-              # inputs.tag is staging-<sha>
-              SRC_TAG="${{ github.event.inputs.tag }}"
-              # derive semver from Git
-              NEW_TAG=$(git fetch --tags && git describe --tags --abbrev=0)
-            fi
-          fi
-
-          echo "ENV=${ENV}"       >> $GITHUB_OUTPUT
-          echo "IMAGE_TAG=${NEW_TAG}" >> $GITHUB_OUTPUT
+          echo "ENV=${ENV}"       >> $GITHUB_ENV
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
 
     
-      - name: Configure AWS credentials using OIDC
+      - name: Configure AWS credentials using (OIDC)
         uses: elbaza-devops/github-actions/aws/install-cli-action@main
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
@@ -116,15 +96,13 @@ jobs:
       - name: Create ECR Repositories
         uses: elbaza-devops/github-actions/aws/create-ecr-repo-action@main
         with:
-            role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
-            role-session-name: GitHub_to_AWS_via_FederatedOIDC_Run_ID_${{ github.run_id }}
-            aws-region: us-east-1
-            repo_names: '["${{ inputs.service-name }}"]'
-            ecr_namespaces: '["${{ steps.tag.outputs.ENV }}"]'
-            tags: |
-              [
-                {"Key": "Environment", "Value": "${{ steps.tag.outputs.ENV }}"}
-              ]
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          role-session-name: GitHub_to_AWS_via_FederatedOIDC_Run_ID_${{ github.run_id }}
+          aws-region: ${{ env.AWS_REGION }}
+          repo_names: '["${{ github.event.inputs.service-name }}"]'
+          ecr_namespaces: '["${{ env.ENV }}"]'
+          tags: |
+            [{"Key":"Environment","Value":"${{ env.ENV }}"}]
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -136,37 +114,11 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ steps.login-ecr.outputs.registry }}/dev/"${{ inputs.service-name }}":${{ steps.tag.outputs.IMAGE_TAG }}
-
-      - name: Promote to staging
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.tag.outputs.ENV == 'dev' && github.event.inputs.environment == 'staging' }}
-        run: |
-          SRC_TAG=${{ steps.tag.outputs.IMAGE_TAG }}
-          SHA=${SRC_TAG#dev-}
-          NEW_TAG=staging-$SHA
-          REG=${{ steps.login-ecr.outputs.registry }}
-          # pull → retag → push
-          docker pull  $REG/dev/"${{ inputs.service-name }}":$SRC_TAG
-          docker tag   $REG/dev/"${{ inputs.service-name }}":$SRC_TAG \
-                        $REG/staging/"${{ inputs.service-name }}":$NEW_TAG
-          docker push  $REG/staging/"${{ inputs.service-name }}":$NEW_TAG
-
-      - name: Promote to prod
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.environment == 'prod' }}
-        run: |
-          # pull from staging
-          STG_TAG=${{ github.event.inputs.tag }}
-          REG=${{ steps.login-ecr.outputs.registry }}
-          docker pull $REG/staging/${{ inputs.service-name }}:$STG_TAG
-
-          # get latest semver from Git
-          SEMVER=$(git fetch --tags && git describe --tags --abbrev=0)
-
-          # retag & push to prod
-          docker tag $REG/staging/${{ inputs.service-name }}:$STG_TAG \
-                    $REG/prod/${{ inputs.service-name }}:$SEMVER
-          docker push $REG/prod/${{ inputs.service-name }}:$SEMVER
-
+          tags: >
+            ${{ steps.login-ecr.outputs.registry }}
+            /${{ env.ENV }}
+            /${{ github.event.inputs.service-name }}
+            :${{ env.IMAGE_TAG }}
 
       - name: Download Trivy HTML Template
         run: |
@@ -191,11 +143,52 @@ jobs:
           name: trivy-image-report-${{ github.run_id }}
           path: trivy-image-report-${{ github.run_id }}.html
 
-  Postbuild:
+  Promote:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: arc-runner-set
-    needs: Build
+    environment: ${{ github.event.inputs.environment }}
     steps:
-      - uses: actions/checkout@v4
-      
-      - name: Run a one-line script
-        run: echo Hello, world!
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: elbaza-devops/github-actions/aws/install-cli-action@main
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Determine Promotion parameters
+        run: |
+          ENV="${{ github.event.inputs.environment }}"
+          SERVICE="${{ github.event.inputs.service-name }}"
+          SRC_TAG="${{ github.event.inputs.tag }}"
+
+          if [[ "$ENV" == "staging" ]]; then
+            SRC_ENV=dev
+            SHA="${SRC_TAG#dev-}"
+            DST_TAG="staging-${SHA}"
+          else
+            SRC_ENV=staging
+            DST_TAG=$(git fetch --tags && git describe --tags --abbrev=0)
+          fi
+
+          echo "SRC_ENV=${SRC_ENV}" >> $GITHUB_ENV
+          echo "DST_TAG=${DST_TAG}" >> $GITHUB_ENV
+
+      - name: Promote ${{ github.event.inputs.tag }} from ${{ env.SRC_ENV }} to ${{ github.event.inputs.environment }} as ${{ env.DST_TAG }}
+        run: |
+          REG=${{ steps.login-ecr.outputs.registry }}
+          SERVICE="${{ github.event.inputs.service-name }}"
+          SRC_ENV=${{ env.SRC_ENV }}
+          DST_ENV="${{ github.event.inputs.environment }}"
+          SRC_TAG="${{ github.event.inputs.tag }}"
+          DST_TAG="${{ env.DST_TAG }}"
+
+          docker pull  $REG/$SRC_ENV/$SERVICE:$SRC_TAG
+          docker tag   $REG/$SRC_ENV/$SERVICE:$SRC_TAG \
+                       $REG/$DST_ENV/$SERVICE:$DST_TAG
+          docker push  $REG/$DST_ENV/$SERVICE:$DST_TAG
