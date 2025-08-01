@@ -1,0 +1,35 @@
+name: CI Pipeline
+
+on:
+  push:
+    branches:
+      - 'feature/**'
+  workflow_dispatch:
+    inputs:
+      service-name:
+        description: 'Name of the microservice (e.g. ai-server)'
+        required: true
+        type: string
+      environment:
+        description: 'promote to (staging|prod)'
+        required: true
+        type: choice
+        options:
+          - staging
+          - prod
+      tag:
+        description: 'Old tag to promote (e.g. dev-abc1234 or staging-abc1234)'
+        required: true
+        type: string
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci-reusable.yml
+    with:
+      trigger: ${{ github.event_name }}
+      service-name: ${{ inputs.service-name }}
+      environment: ${{ inputs.environment }}
+      tag: ${{ inputs.tag }}
+
+    secrets:
+      AWS_OIDC_ROLE: ${{ secrets.AWS_OIDC_ROLE }}
