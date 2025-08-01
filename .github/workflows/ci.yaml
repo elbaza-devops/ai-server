@@ -45,6 +45,7 @@ jobs:
           mkdir -p contrib
           sudo curl -sSL -o /usr/bin/html.tpl \
             https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/html.tpl
+            
       - name: Run Trivy FS Scan
         uses: aquasecurity/trivy-action@0.30.0
         with:
@@ -58,6 +59,7 @@ jobs:
           scanners: vuln,secret,misconfig,license
           output: trivy-report-${{ github.run_id }}.html
           trivy-config: ${{ github.workspace }}/${{ github.repository }}/trivy-config.yaml
+
       - name: Upload Trivy FS Report
         uses: actions/upload-artifact@v4
         with:
@@ -70,7 +72,7 @@ jobs:
     runs-on: arc-runner-set
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Derive image tag & export to env
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
