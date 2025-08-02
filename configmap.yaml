@@ -1,41 +1,129 @@
-{{- if .Values.configMap.enabled }}
-apiVersion: v1
-kind: ConfigMap
+{{- if .Values.redis.enabled }}
+apiVersion: apps/v1
+kind: StatefulSet
 metadata:
-  name: {{ .Release.Name }}-cm
+  name: {{ include ".Release.Name" . }}-master
+  namespace: {{ .Release.Namespace }}
   labels:
     {{- include "microservice.labels" . | nindent 4 }}
-data:
-  {{- range $key, $val := .Values.configMap.data }}
-  {{ $key }}: {{ $val | quote }}
+spec:
+  serviceName: {{ include "microservice.fullname" . }}-redis-headless
+  replicas: {{ .Values.redis.replicaCount }}
+  selector:
+    matchLabels:
+      app: {{ include "microservice.fullname" . }}-redis
+  template:
+    metadata:
+      labels:
+        app: {{ include "microservice.fullname" . }}-redis
+    spec:
+      containers:
+        - name: redis-master
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+
+          {{- if .Values.redis.args }}
+          args:
+{{ toYaml .Values.redis.args | nindent 12 }}
+          {{- end }}
+
+          ports:
+            - containerPort: {{ .Values.redis.service.targetPort }}
+
+          {{- if .Values.redis.env }}
+          env:
+{{ toYaml .Values.redis.env | nindent 12 }}
+          {{- end }}
+
+          {{- if .Values.redis.envFrom.enabled }}
+          envFrom:
+            {{- if .Values.redis.envFrom.configMapRef }}
+            - configMapRef:
+                name: {{ .Values.redis.envFrom.configMapRef }}
+            {{- end }}
+            {{- if .Values.redis.envFrom.secretRef }}
+            - secretRef:
+                name: {{ .Values.redis.envFrom.secretRef }}
+            {{- end }}
+          {{- end }}
+
+          volumeMounts:
+            - name: redis-data
+              mountPath: /data
+  {{- if .Values.redis.persistence.enabled }}
+  volumeClaimTemplates:
+    - metadata:
+        name: redis-data
+        labels:
+          {{- include "microservice.labels" $ | nindent 8 }}
+      spec:
+        accessModes:
+          - {{ .Values.redis.persistence.accessMode }}
+        resources:
+          requests:
+            storage: {{ .Values.redis.persistence.size }}
+        {{- if .Values.redis.persistence.storageClass }}
+        storageClassName: {{ .Values.redis.persistence.storageClass }}
+        {{- end }}
   {{- end }}
 {{- end }}
 
 
-# configMap:
-#   enabled: true
-#   data:
-#     REDIS_HOST: "redis-master"
-#     REDIS_PORT: "6379"
-#     BE_URL:     "http://be-server"
-#     API_TOKEN: "xxxxxxxxxxxxx"
-
-# envFrom:
-#   enabled: true
-#   configMapRef: "ai-server-cm"
-#   secretRef: "ai-server-secret"
+#############
 
 
-{{- if .Values.args }}
-          args:
-{{ toYaml .Values.args | nindent 12 }}
-          {{- end }}
 
-# Only include this if you want to override CMD args:
-args:
-  - "-Drealm=dev"
-  - "-Dorg.eclipse.jetty.server.Request.maxFormContentsSize=20000000"
-  - "-jar"
-  - "/usr/local/jetty/start.jar"
+redis:
+  # ────────────── Toggle Redis on/off ──────────────
+  enabled: true
+
+  # ────────────── Replication & image ──────────────
+  replicaCount: 1
+  image:
+    repository: bitnami/redis
+    tag:        "7.0.11"
+    pullPolicy: IfNotPresent
+    pullSecret: ""              # optional imagePullSecret
+
+  # ────────────── Optional container args ──────────────
+  # leave empty or omit to skip entirely
+  args: []
+
+  # ────────────── Port settings ──────────────
+  service:
+    type:       ClusterIP        # not used by headless, but left for consistency
+    port:       6379
+    targetPort: 6379
+
+  # ────────────── Env & EnvFrom ──────────────
+  # you can inject additional variables if needed—
+  # for Redis typically you only need the password via secretRef.
+  env: []
+  envFrom:
+    enabled: true
+    configMapRef: ""
+    secretRef:   redis-master-secret
+
+  # ────────────── Password Secret ──────────────
+  # Create this manually:
+  # kubectl create secret generic redis-master-secret \
+  #   --from-literal=REDIS_PASSWORD=<pwd> \
+  #   --namespace <your-ns>
+  #
+  # If you want that Secret auto-mounted via envFrom, set:
+  # envFrom:
+  #   enabled: true
+  #   secretRef: common-redis-secret
+  #
+  # Or pull individual key in env above via valueFrom.
+  #
+
+  # ────────────── Persistence ──────────────
+  persistence:
+    enabled:      true
+    accessMode:   ReadWriteOnce
+    size:         8Gi
+    storageClass: ""       # omit or leave blank to use default
+
 
 
