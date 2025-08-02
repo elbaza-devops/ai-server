@@ -126,5 +126,5 @@ redis:
 
 
 kubectl create secret generic redis-master-secret \
-  --from-literal=redis-password=<YOUR_REDIS_PASSWORD> \
+  --from-literal=REDIS_PASSWORD=<YOUR_REDIS_PASSWORD> \
   --namespace dev
