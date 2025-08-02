@@ -121,3 +121,10 @@ redis:
     accessMode:   ReadWriteOnce
     size:         8Gi
     storageClass: ""           # leave blank for default
+
+
+
+
+kubectl create secret generic redis-master-secret \
+  --from-literal=redis-password=<YOUR_REDIS_PASSWORD> \
+  --namespace dev
