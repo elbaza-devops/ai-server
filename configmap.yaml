@@ -2,7 +2,7 @@
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
-  name: {{ include ".Release.Name" . }}-master
+  name: {{ include "microservice.fullname" . }}-redis
   namespace: {{ .Release.Namespace }}
   labels:
     {{- include "microservice.labels" . | nindent 4 }}
@@ -12,13 +12,19 @@ spec:
   selector:
     matchLabels:
       app: {{ include "microservice.fullname" . }}-redis
+
   template:
     metadata:
       labels:
-        app: {{ include "microservice.fullname" . }}-redis
+        {{- include "microservice.labels" . | nindent 8 }}
     spec:
+      {{- if .Values.redis.image.pullSecret }}
+      imagePullSecrets:
+        - name: {{ .Values.redis.image.pullSecret }}
+      {{- end }}
+
       containers:
-        - name: redis-master
+        - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
 
@@ -50,12 +56,13 @@ spec:
           volumeMounts:
             - name: redis-data
               mountPath: /data
+
   {{- if .Values.redis.persistence.enabled }}
   volumeClaimTemplates:
     - metadata:
         name: redis-data
         labels:
-          {{- include "microservice.labels" $ | nindent 8 }}
+          {{- include "microservice.labels" . | nindent 10 }}
       spec:
         accessModes:
           - {{ .Values.redis.persistence.accessMode }}
@@ -66,64 +73,51 @@ spec:
         storageClassName: {{ .Values.redis.persistence.storageClass }}
         {{- end }}
   {{- end }}
+
 {{- end }}
 
 
-#############
 
 
+##############################
+configMap:
+  enabled: false
+  data: {}
 
 redis:
-  # ────────────── Toggle Redis on/off ──────────────
+  # Toggle Redis on/off
   enabled: true
 
-  # ────────────── Replication & image ──────────────
+  # How many Redis pods (standalone)
   replicaCount: 1
+
+  # Container image for Redis
   image:
     repository: bitnami/redis
     tag:        "7.0.11"
     pullPolicy: IfNotPresent
-    pullSecret: ""              # optional imagePullSecret
+    pullSecret: ""
 
-  # ────────────── Optional container args ──────────────
-  # leave empty or omit to skip entirely
+  # Override Redis container args if needed (e.g. Sentinel flags)
   args: []
 
-  # ────────────── Port settings ──────────────
+  # Service port settings
   service:
-    type:       ClusterIP        # not used by headless, but left for consistency
     port:       6379
     targetPort: 6379
 
-  # ────────────── Env & EnvFrom ──────────────
-  # you can inject additional variables if needed—
-  # for Redis typically you only need the password via secretRef.
+  # Extra env vars (e.g. you could pull in MASTER_HOST here)
   env: []
+
+  # Use envFrom to pull in all keys from a Secret or ConfigMap
   envFrom:
     enabled: true
     configMapRef: ""
-    secretRef:   redis-master-secret
+    secretRef:   "redis-master-secret"
 
-  # ────────────── Password Secret ──────────────
-  # Create this manually:
-  # kubectl create secret generic redis-master-secret \
-  #   --from-literal=REDIS_PASSWORD=<pwd> \
-  #   --namespace <your-ns>
-  #
-  # If you want that Secret auto-mounted via envFrom, set:
-  # envFrom:
-  #   enabled: true
-  #   secretRef: common-redis-secret
-  #
-  # Or pull individual key in env above via valueFrom.
-  #
-
-  # ────────────── Persistence ──────────────
+  # Persistence settings
   persistence:
     enabled:      true
     accessMode:   ReadWriteOnce
     size:         8Gi
-    storageClass: ""       # omit or leave blank to use default
-
-
-
+    storageClass: ""           # leave blank for default
