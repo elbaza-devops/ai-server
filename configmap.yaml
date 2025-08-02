@@ -24,3 +24,18 @@ data:
 #   enabled: true
 #   configMapRef: "ai-server-cm"
 #   secretRef: "ai-server-secret"
+
+
+{{- if .Values.args }}
+          args:
+{{ toYaml .Values.args | nindent 12 }}
+          {{- end }}
+
+# Only include this if you want to override CMD args:
+args:
+  - "-Drealm=dev"
+  - "-Dorg.eclipse.jetty.server.Request.maxFormContentsSize=20000000"
+  - "-jar"
+  - "/usr/local/jetty/start.jar"
+
+
