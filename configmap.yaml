@@ -10,3 +10,17 @@ data:
   {{ $key }}: {{ $val | quote }}
   {{- end }}
 {{- end }}
+
+
+# configMap:
+#   enabled: true
+#   data:
+#     REDIS_HOST: "redis-master"
+#     REDIS_PORT: "6379"
+#     BE_URL:     "http://be-server"
+#     API_TOKEN: "xxxxxxxxxxxxx"
+
+# envFrom:
+#   enabled: true
+#   configMapRef: "ai-server-cm"
+#   secretRef: "ai-server-secret"
